@@ -1,8 +1,7 @@
-weather API<br>
+<h2>Get Started </h2>
+<br>
 
-<h2>Get Started </h2><br>
-
-<h4>Following these next steps will get the app running</h4><br>
+<h4>Following these next steps will get the app running</h4>
 
 <ul>
     <li>clone repo</li>
@@ -30,3 +29,14 @@ weather API<br>
         </code>
     </li>
     
+<h3> Instructions on how to use the API </h3>
+    <p>The current url's that are enabled are the index and store methods  </p>
+    <br>
+    <p> The url for those are </p>
+    <ul>
+        <li> GET api/v1/weather </li>
+        <li>
+            POST api/v1/weather <br>
+            Which requires an input field date in a date format 'Y-m-d'
+        </li>
+    </ul>
