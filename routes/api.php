@@ -37,7 +37,9 @@ Route::get('tester', function(){
 });
 
 Route::resource('/v1/weather', WeatherForecastController::class)->only([
-    'index', 'store', 'show', 'update'
+    'index', 'store', 'show'
 ]);
+
+Route::put('v1/weather', [WeatherForecastController::class, 'updateByDate']);
 
 

@@ -63,7 +63,6 @@ class WeatherForecastController extends Controller
         $weatherByCities = [];
         $weatherForecasts = [];
 
-
         $diffInDays = now()->diffInDays($inputDate);
 
         if ($isBetweenValidDates) {
@@ -86,6 +85,8 @@ class WeatherForecastController extends Controller
                             'temperature' => $city->current->temp,
                             'date' => Carbon::createFromTimestamp($city->current->dt)->format('Y-m-d'),
                             'description' => $city->current->weather[0]->description,
+                            'latitude' => $city->lat,
+                            'longitud' => $city->lon,
                         ])
                     );
                 }
@@ -99,14 +100,14 @@ class WeatherForecastController extends Controller
                 // get data from each city
                 for ($i=0; $i < 5; $i++) {
                     $latitudeLongitud = $this->getLatitudeLongitud($i);
-                    $data = json_decode(Http::get("https://api.openweathermap.org/data/2.5/onecall?lat={$latitudeLongitud[0]}&lon={$latitudeLongitud[1]}&units=metric&exclude=currently,minutely,hourly,alerts&appid={$weatherKey}"));
+                    $data = json_decode(Http::get("https://api.openweathermap.org/data/2.5/onecall?lat={$latitudeLongitud[0]}&lon={$latitudeLongitud[1]}&units=metric&exclude=minutely,hourly,alerts&appid={$weatherKey}"));
 
                     // push only data from the difference in day position of array
                     array_push($weatherByCities, $data->daily[$diffInDays]);
                 }
-
                 // create the models
                 foreach ($weatherByCities as $key => $city) {
+                    $latitudeLongitud = $this->getLatitudeLongitud($key);
                     // push to the array and create
                     array_push($weatherForecasts,
                         WeatherForecast::create([
@@ -114,6 +115,8 @@ class WeatherForecastController extends Controller
                             'temperature' => $city->temp->day,
                             'date' => Carbon::createFromTimestamp($city->dt)->format('Y-m-d'),
                             'description' => $city->weather[0]->description,
+                            'latitude' => $latitudeLongitud[0],
+                            'longitude' => $latitudeLongitud[1],
                         ])
                     );
                 }
@@ -126,9 +129,6 @@ class WeatherForecastController extends Controller
             ], 201);
 
         }
-
-
-
     }
 
     /**
@@ -149,9 +149,66 @@ class WeatherForecastController extends Controller
      * @param  \App\Models\WeatherForecast  $weatherForecast
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, WeatherForecast $weatherForecast)
+    public function updateByDate(Request $request)
     {
-        //
+        // validate the request
+        $validator = Validator::make($request->all(), [
+            'date' => 'required|date-format:Y-m-d',
+        ]);
+        if ($validator->fails()) {
+            return response()->json([
+                'invalidDate' => true,
+            ], 400);
+        }
+
+        $inputDate = Carbon::createFromFormat('Y-m-d', $request->date);
+
+        // check if date is from today
+        if (!$inputDate->isToday()) {
+            return response()->json([
+                'date-is-not-today' => true,
+            ]);
+        }
+
+        $forecasts = WeatherForecast::where('date', $inputDate->format('Y-m-d'))
+        ->select('city', 'temperature', 'date', 'description', 'latitude', 'longitud')
+        ->get();
+
+        // check if there is any results
+        if ($forecasts->isEmpty()) {
+            return response()->json([
+                'noResults' => true,
+            ]);
+        }
+
+        // reach for the weather api
+        $weatherKey = env('WEATHER_KEY');
+        $weatherForecasts = [];
+        $weatherByCities = [];
+        // get data from each city
+        for ($i=0; $i < 5; $i++) {
+            $latitudeLongitud = $this->getLatitudeLongitud($i);
+            $data = json_decode(Http::get("https://api.openweathermap.org/data/2.5/weather?lat={$latitudeLongitud[0]}&lon={$latitudeLongitud[1]}&units=metric&appid={$weatherKey}"));
+            array_push($weatherByCities, $data);
+        }
+
+        // run a foreach on the forecasts in database and update the temperature
+        foreach ($weatherByCities as $key => $city) {
+            foreach ($forecasts as $key => $forecast) {
+                if ($forecast->latitude == $city->coord->lat && $forecast->longitud == $city->coord->lon) {
+
+                    // updates only the temperature
+                    $forecast->update([
+                        'temperature' => $city->main->temp,
+                    ]);
+                }
+            }
+        }
+
+        return response()->json([
+            'updated' => true,
+            'forecasts' => $forecasts
+        ]);
     }
 
     protected function getCityName($cityId)

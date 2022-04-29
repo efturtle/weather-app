@@ -19,6 +19,8 @@ class CreateWeatherForecastsTable extends Migration
             $table->string('temperature');
             $table->date('date');
             $table->string('description');
+            $table->char('latitude', 10);
+            $table->char('longitud', 10);
             $table->timestamps();
         });
     }

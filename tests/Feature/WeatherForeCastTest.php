@@ -32,4 +32,16 @@ class WeatherForeCastTest extends TestCase
             'created' => true,
         ]);
     }
+
+    public function test_updateForecast()
+    {
+        $response = $this->putJson('/api/v1/weather', [
+            'date' => '2022-04-07',
+        ]);
+
+        $response->asserStatus(200)
+        ->assertJson([
+            'updated' => true,
+        ]);
+    }
 }
