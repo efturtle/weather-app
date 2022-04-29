@@ -39,4 +39,8 @@
             POST api/v1/weather <br>
             Which requires an input field date in a date format 'Y-m-d'
         </li>
+        <li>
+            Same as post needs date
+            PUT (should be patch) /api/v1/weather
+        </li>
     </ul>
