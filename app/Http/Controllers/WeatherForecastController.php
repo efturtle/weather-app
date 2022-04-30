@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Auth\Events\GenerateForecastOFToday;
 
 class WeatherForecastController extends Controller
 {
@@ -54,18 +55,13 @@ class WeatherForecastController extends Controller
 
         $weatherKey = env('WEATHER_KEY');
 
-        // make sure the date is between five days ago and 7 days in the future
-        $isBetweenValidDates = $inputDate->between(
-            now()->subDays(5),
-            now()->addDays(7)
-        );
-
         $weatherByCities = [];
         $weatherForecasts = [];
+        $filteredWeather = [];
 
         $diffInDays = now()->diffInDays($inputDate);
 
-        if ($isBetweenValidDates) {
+        if ($this->isDateBetweenValidDates($inputDate)) {
 
             // PAST
             if ($inputDate->isPast()) {
@@ -78,7 +74,7 @@ class WeatherForecastController extends Controller
                     array_push($weatherByCities, $data);
                 }
                 // create the models
-                foreach ($weatherByCities as $city) {
+                foreach ($weatherByCities as $key => $city) {
                     array_push($weatherForecasts,
                         WeatherForecast::create([
                             'city' => $city->timezone,
@@ -88,6 +84,12 @@ class WeatherForecastController extends Controller
                             'latitude' => $city->lat,
                             'longitud' => $city->lon,
                         ])
+                    );
+
+                    // remove items from array for json response
+                    array_push(
+                        $filteredWeather,
+                        $this->getFilteredArray($weatherForecasts[$key])
                     );
                 }
             }
@@ -107,7 +109,9 @@ class WeatherForecastController extends Controller
                 }
                 // create the models
                 foreach ($weatherByCities as $key => $city) {
+
                     $latitudeLongitud = $this->getLatitudeLongitud($key);
+
                     // push to the array and create
                     array_push($weatherForecasts,
                         WeatherForecast::create([
@@ -116,8 +120,14 @@ class WeatherForecastController extends Controller
                             'date' => Carbon::createFromTimestamp($city->dt)->format('Y-m-d'),
                             'description' => $city->weather[0]->description,
                             'latitude' => $latitudeLongitud[0],
-                            'longitude' => $latitudeLongitud[1],
+                            'longitud' => $latitudeLongitud[1],
                         ])
+                    );
+
+                    // remove items from array for json response
+                    array_push(
+                        $filteredWeather,
+                        $this->getFilteredArray($weatherForecasts[$key])
                     );
                 }
 
@@ -125,10 +135,15 @@ class WeatherForecastController extends Controller
 
             return response()->json([
                 'created' => true,
-                'weatherForecasts' => $weatherForecasts,
+                'weatherForecasts' => $filteredWeather,
             ], 201);
 
         }
+
+        return response()->json([
+            'error' => 'Select Date between 5 days prior and 7 days future'
+        ]);
+
     }
 
     /**
@@ -151,11 +166,7 @@ class WeatherForecastController extends Controller
      */
     public function updateByDate(Request $request)
     {
-        // validate the request
-        $validator = Validator::make($request->all(), [
-            'date' => 'required|date-format:Y-m-d',
-        ]);
-        if ($validator->fails()) {
+        if (!$this->isRequestDateValid($request)) {
             return response()->json([
                 'invalidDate' => true,
             ], 400);
@@ -166,24 +177,25 @@ class WeatherForecastController extends Controller
         // check if date is from today
         if (!$inputDate->isToday()) {
             return response()->json([
-                'date-is-not-today' => true,
+                'error' => 'Can only update todays weather forecast',
             ]);
         }
 
-        $forecasts = WeatherForecast::where('date', $inputDate->format('Y-m-d'))
-        ->select('city', 'temperature', 'date', 'description', 'latitude', 'longitud')
-        ->get();
+        $forecasts = WeatherForecast::where('date', $inputDate->format('Y-m-d'))->get();
 
         // check if there is any results
         if ($forecasts->isEmpty()) {
+            event(new \App\Providers\NoForecastsToday(now()->format('Y-m-d')));
+
             return response()->json([
                 'noResults' => true,
+                'forecasts' => WeatherForecast::where('date', now()->format('Y-m-d'))->get()
             ]);
         }
 
         // reach for the weather api
         $weatherKey = env('WEATHER_KEY');
-        $weatherForecasts = [];
+        $filteredWeather = [];
         $weatherByCities = [];
         // get data from each city
         for ($i=0; $i < 5; $i++) {
@@ -197,18 +209,29 @@ class WeatherForecastController extends Controller
             foreach ($forecasts as $key => $forecast) {
                 if ($forecast->latitude == $city->coord->lat && $forecast->longitud == $city->coord->lon) {
 
-                    // updates only the temperature
-                    $forecast->update([
-                        'temperature' => $city->main->temp,
-                    ]);
+                    // updates the temperature
+                    $forecast->temperature = $city->main->temp;
+                    $forecast->save();
                 }
             }
+
+            array_push(
+                $filteredWeather,
+                $this->getFilteredArray($forecast)
+            );
         }
 
         return response()->json([
             'updated' => true,
-            'forecasts' => $forecasts
+            'forecasts' => $filteredWeather
         ]);
+    }
+
+    protected function getFilteredArray($forecast)
+    {
+        $collection = collect($forecast);
+        $filtered = $collection->except(['id', 'created_at', 'updated_at']);
+        return $filtered->all();
     }
 
     protected function getCityName($cityId)
@@ -236,7 +259,7 @@ class WeatherForecastController extends Controller
         }
     }
 
-    protected function getLatitudeLongitud($city)
+    public function getLatitudeLongitud($city)
     {
         switch ($city) {
             case 0:
@@ -254,10 +277,30 @@ class WeatherForecastController extends Controller
             case 4:
                 return ['35.6895', '139.6917'];
                 break;
-
             default:
                 return 'wrong city';
                 break;
         }
+    }
+
+    protected function isRequestDateValid($request)
+    {
+        // validate the request
+        $validator = Validator::make($request->all(), [
+            'date' => 'required|date-format:Y-m-d',
+        ]);
+        if ($validator->fails()) {
+            return false;
+        }
+        return true;
+    }
+
+    protected function isDateBetweenValidDates($date)
+    {
+        $result = $date->between(
+            now()->subDays(5),
+            now()->addDays(7)
+        );
+        return $result;
     }
 }

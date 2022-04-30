@@ -18,6 +18,8 @@ class WeatherForecastFactory extends Factory
             'temperature' => $this->faker->numberBetween(20, 30),
             'date' => $this->faker->date(),
             'description' => $this->faker->word(),
+            'latitude' => 'lol',
+            'longitud' => 'lol'
         ];
     }
 }

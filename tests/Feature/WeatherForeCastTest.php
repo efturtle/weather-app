@@ -36,10 +36,10 @@ class WeatherForeCastTest extends TestCase
     public function test_updateForecast()
     {
         $response = $this->putJson('/api/v1/weather', [
-            'date' => '2022-04-07',
+            'date' => '2022-04-29',
         ]);
 
-        $response->asserStatus(200)
+        $response->assertStatus(200)
         ->assertJson([
             'updated' => true,
         ]);
