@@ -44,3 +44,6 @@
             PUT (should be patch) /api/v1/weather
         </li>
     </ul>
+    
+    <h3> To have the store job working <h3>
+        <p>swap out the sync value for database in the .env file</p>
