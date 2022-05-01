@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Auth\Events\GenerateForecastOFToday;
+use App\Jobs\StoreWeatherForecast;
 
 class WeatherForecastController extends Controller
 {
@@ -75,21 +76,21 @@ class WeatherForecastController extends Controller
                 }
                 // create the models
                 foreach ($weatherByCities as $key => $city) {
-                    array_push($weatherForecasts,
-                        WeatherForecast::create([
-                            'city' => $city->timezone,
-                            'temperature' => $city->current->temp,
-                            'date' => Carbon::createFromTimestamp($city->current->dt)->format('Y-m-d'),
-                            'description' => $city->current->weather[0]->description,
-                            'latitude' => $city->lat,
-                            'longitud' => $city->lon,
-                        ])
-                    );
 
-                    // remove items from array for json response
+                    $cityWeather = [
+                        'city' => $city->timezone,
+                        'temperature' => $city->current->temp,
+                        'date' => Carbon::createFromTimestamp($city->current->dt)->format('Y-m-d'),
+                        'description' => $city->current->weather[0]->description,
+                        'latitude' => $city->lat,
+                        'longitud' => $city->lon,
+                    ];
+
+                    StoreWeatherForecast::dispatch($cityWeather);
+
                     array_push(
-                        $filteredWeather,
-                        $this->getFilteredArray($weatherForecasts[$key])
+                        $weatherForecasts,
+                        $cityWeather
                     );
                 }
             }
@@ -109,25 +110,23 @@ class WeatherForecastController extends Controller
                 }
                 // create the models
                 foreach ($weatherByCities as $key => $city) {
-
                     $latitudeLongitud = $this->getLatitudeLongitud($key);
 
-                    // push to the array and create
-                    array_push($weatherForecasts,
-                        WeatherForecast::create([
-                            'city' => $this->getCityName($key),
-                            'temperature' => $city->temp->day,
-                            'date' => Carbon::createFromTimestamp($city->dt)->format('Y-m-d'),
-                            'description' => $city->weather[0]->description,
-                            'latitude' => $latitudeLongitud[0],
-                            'longitud' => $latitudeLongitud[1],
-                        ])
-                    );
+                    $cityWeather = [
+                        'city' => $this->getCityName($key),
+                        'temperature' => $city->temp->day,
+                        'date' => Carbon::createFromTimestamp($city->dt)->format('Y-m-d'),
+                        'description' => $city->weather[0]->description,
+                        'latitude' => $latitudeLongitud[0],
+                        'longitud' => $latitudeLongitud[1],
+                    ];
+
+                    StoreWeatherForecast::dispatch($cityWeather);
 
                     // remove items from array for json response
                     array_push(
-                        $filteredWeather,
-                        $this->getFilteredArray($weatherForecasts[$key])
+                        $weatherForecasts,
+                        $cityWeather
                     );
                 }
 
@@ -135,7 +134,7 @@ class WeatherForecastController extends Controller
 
             return response()->json([
                 'created' => true,
-                'weatherForecasts' => $filteredWeather,
+                'weatherForecasts' => $weatherForecasts,
             ], 201);
 
         }
